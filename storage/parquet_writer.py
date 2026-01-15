@@ -1,28 +1,25 @@
 import os
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 from datetime import datetime
 
-
-def write_tweets_to_parquet(tweets: list, base_dir: str = "data/tweets"):
-
+def write_tweets_to_parquet(tweets, output_dir="data/processed"):
     if not tweets:
+        print("[WARN] No tweets to store")
         return
 
-    df= pd.DataFrame(tweets)
-
-    df["timestamp"]= pd.to_datetime(df["timestamp"], errors="coerce")
-    df["scraped_at"]= pd.to_datetime(df["scraped_at"], errors="coerce")
-
-    scrape_date= datetime.utcnow().strftime("%Y-%m-%d")
-    output_dir= os.path.join(base_dir, f"date={scrape_date}")
     os.makedirs(output_dir, exist_ok=True)
 
-    table= pa.Table.from_pandas(df, preserve_index=False)
+    df = pd.DataFrame(tweets)
 
-    file_path= os.path.join(output_dir, f"tweets_{int(datetime.utcnow().timestamp())}.parquet")
+    if "scraped_at" not in df.columns:
+        df["scraped_at"] = datetime.utcnow().isoformat()
 
-    pq.write_table(table, file_path, compression="snappy")
+    df["scraped_at"] = pd.to_datetime(df["scraped_at"], errors="coerce")
 
-    print(f"Stored {len(df)} tweets to {file_path}")
+    output_path = os.path.join(
+        output_dir,
+        f"tweets_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
+    )
+
+    df.to_parquet(output_path, index=False)
+    print(f"[INFO] Parquet written to {output_path}")
