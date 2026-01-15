@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
 
 HASHTAGS = ["nifty50", "sensex", "intraday", "banknifty"]
-TARGET_TWEETS = 50
-MAX_SCROLLS = 3
+TARGET_TWEETS = 2000
+MAX_SCROLLS = 30
 
 
 def scrape_all_hashtags():
