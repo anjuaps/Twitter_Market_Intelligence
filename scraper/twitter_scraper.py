@@ -8,14 +8,21 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
+def optional_login(driver):
+    print("[INFO] If tweets do not load, please log in manually.")
+    print("[INFO] You have 60 seconds to complete login if required.")
+    time.sleep(60)
+
 
 HASHTAGS= ["nifty50", "sensex", "intraday", "banknifty"]
-TARGET_TWEETS= 2000 #design target (24h window)
-MAX_SCROLLS= 30 #safe runtime limit for demo
+TARGET_TWEETS= 50 #design target (24h window)
+MAX_SCROLLS= 3 #safe runtime limit for demo
 
+# TARGET_TWEETS= 2000 #design target (24h window)
+# MAX_SCROLLS= 30 #safe runtime limit for demo
 
 def extract_engagement(text: str) -> int:
-    match = re.search(r"(\d+)", text.replace(",", ""))
+    match= re.search(r"(\d+)", text.replace(",", ""))
     return int(match.group(1)) if match else 0
 
 
@@ -28,14 +35,20 @@ def scrape_hashtag(hashtag: str):
 
     url= f"https://twitter.com/search?q=%23{hashtag}&f=live"
     driver.get(url)
+    optional_login(driver)
     time.sleep(6)
+
 
     collected= {}
     scroll_count= 0
 
     while len(collected) < TARGET_TWEETS and scroll_count < MAX_SCROLLS:
         tweets= driver.find_elements(By.XPATH, "//article[@data-testid='tweet']")
+        
+        if not tweets:
+            print(f"[WARN] No tweets loaded for #{hashtag}. Page may require login.")
 
+        
         for tweet in tweets:
             try:
                 username= tweet.find_element(By.XPATH, ".//span[contains(text(),'@')]").text
