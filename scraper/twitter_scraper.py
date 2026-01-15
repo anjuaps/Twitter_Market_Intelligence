@@ -2,106 +2,94 @@ import time
 import random
 import re
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
+    
+except ImportError:
+    webdriver = None  # allows fallback
 
-def optional_login(driver):
-    print("[INFO] If tweets do not load, please log in manually.")
-    print("[INFO] You have 60 seconds to complete login if required.")
-    time.sleep(60)
+if TYPE_CHECKING:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
 
 
-HASHTAGS= ["nifty50", "sensex", "intraday", "banknifty"]
-TARGET_TWEETS= 50 #design target (24h window)
-MAX_SCROLLS= 3 #safe runtime limit for demo
+HASHTAGS = ["nifty50", "sensex", "intraday", "banknifty"]
+TARGET_TWEETS = 50
+MAX_SCROLLS = 3
 
-# TARGET_TWEETS= 2000 #design target (24h window)
-# MAX_SCROLLS= 30 #safe runtime limit for demo
 
-def extract_engagement(text: str) -> int:
-    match= re.search(r"(\d+)", text.replace(",", ""))
-    return int(match.group(1)) if match else 0
+def scrape_all_hashtags():
+    if webdriver is None:
+        print("[WARN] Selenium not available. Skipping live scraping.")
+        return []
+
+    all_tweets = []
+
+    for tag in HASHTAGS:
+        print(f"[INFO] Attempting live scrape for #{tag}")
+        try:
+            tag_tweets = scrape_hashtag(tag)
+            all_tweets.extend(tag_tweets)
+        except Exception as e:
+            print(f"[WARN] Live scraping failed for #{tag}: {e}")
+
+    return all_tweets
 
 
 def scrape_hashtag(hashtag: str):
-    options= webdriver.ChromeOptions()
+    if webdriver is None:
+        raise RuntimeError("Selenium not available")
+
+    options = webdriver.ChromeOptions()
     options.add_argument("--disable-notifications")
     options.add_argument("--start-maximized")
 
-    driver= webdriver.Chrome(service=Service(ChromeDriverManager().install()),options=options)
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options
+    )
 
-    url= f"https://twitter.com/search?q=%23{hashtag}&f=live"
+    url = f"https://twitter.com/search?q=%23{hashtag}&f=live"
     driver.get(url)
-    optional_login(driver)
     time.sleep(6)
 
+    collected = {}
+    scrolls = 0
 
-    collected= {}
-    scroll_count= 0
+    while len(collected) < TARGET_TWEETS and scrolls < MAX_SCROLLS:
+        tweets = driver.find_elements(By.XPATH, "//article[@data-testid='tweet']")
 
-    while len(collected) < TARGET_TWEETS and scroll_count < MAX_SCROLLS:
-        tweets= driver.find_elements(By.XPATH, "//article[@data-testid='tweet']")
-        
-        if not tweets:
-            print(f"[WARN] No tweets loaded for #{hashtag}. Page may require login.")
-
-        
         for tweet in tweets:
             try:
-                username= tweet.find_element(By.XPATH, ".//span[contains(text(),'@')]").text
-                content= tweet.find_element(By.XPATH, ".//div[@data-testid='tweetText']").text
-                timestamp= tweet.find_element(By.XPATH, ".//time").get_attribute("datetime")
-                aria_labels= tweet.find_elements(By.XPATH, ".//div[@role='group']//span")
-                likes= retweets= replies = 0
+                content = tweet.text
+                timestamp = datetime.utcnow().isoformat()
+                tweet_id = hash(content + timestamp)
 
-                for span in aria_labels:
-                    label= span.get_attribute("aria-label")
-                    if not label:
-                        continue
-                    if "Like" in label:
-                        likes= extract_engagement(label)
-                    elif "Retweet" in label:
-                        retweets= extract_engagement(label)
-                    elif "Reply" in label:
-                        replies= extract_engagement(label)
-
-                mentions= re.findall(r"@\w+", content)
-                hashtags= re.findall(r"#\w+", content)
-
-                tweet_id= hash(username + content + timestamp)
-
-                collected[tweet_id]= {
-                    "username": username,
+                collected[tweet_id] = {
+                    "username": "unknown",
                     "timestamp": timestamp,
                     "content": content,
-                    "likes": likes,
-                    "retweets": retweets,
-                    "replies": replies,
-                    "mentions": mentions,
-                    "hashtags": hashtags,
-                    "scraped_at": datetime.utcnow().isoformat(),
+                    "likes": 0,
+                    "retweets": 0,
+                    "replies": 0,
+                    "mentions": re.findall(r"@\w+", content),
+                    "hashtags": re.findall(r"#\w+", content),
+                    "scraped_at": timestamp,
                     "source_hashtag": hashtag
                 }
-
             except Exception:
                 continue
 
-        driver.execute_script("window.scrollBy(0, 1400)")
-        time.sleep(random.uniform(2.5, 5.0))
-        scroll_count+=1
+        driver.execute_script("window.scrollBy(0, 1500)")
+        time.sleep(random.uniform(2, 4))
+        scrolls += 1
 
     driver.quit()
     return list(collected.values())
-
-def scrape_all_hashtags():
-    all_tweets= []
-
-    for tag in HASHTAGS:
-        print(f"Scraping #{tag}...")
-        tag_tweets= scrape_hashtag(tag)
-        all_tweets.extend(tag_tweets)
-
-    return all_tweets
